@@ -1,11 +1,19 @@
 package com.github.jihch;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.JdkSerializationRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
@@ -80,6 +88,40 @@ public class RedisTest {
 		redisTemplate.setValueSerializer(new Jackson2JsonRedisSerializer<>(User.class));
 		User user = (User) redisTemplate.opsForValue().get("user");
 		System.out.println(user);
+	}
+	
+	/**
+	 * 通过RedisTemplate测试pipeline
+	 */
+	@Test
+	public void test7() {
+		Long start = System.currentTimeMillis();
+		RedisSerializer<String> stringSerializer = new StringRedisSerializer();
+		RedisSerializer<User> valueSerializer = new Jackson2JsonRedisSerializer<>(User.class);
+		Map<byte[], byte[]> tuple = new HashMap<>();
+		for (int i = 0; i < 10000; i++) {
+			User user = new User();
+			user.setAge(23);
+			user.setId(2);
+			user.setName("李四");
+			byte[] key =  stringSerializer.serialize("user:"+i);
+			byte[] value = valueSerializer.serialize(user);
+			tuple.put(key, value);
+		}
+		Long end = System.currentTimeMillis();
+		System.out.println("cost: " + (end - start) + " ms" );
+		
+		redisTemplate.execute(new RedisCallback<Long>() {
+			@Override
+			public Long doInRedis(RedisConnection connection) throws DataAccessException {
+				connection.openPipeline();
+				connection.mSet(tuple);
+				connection.closePipeline();
+				return null;
+			}
+		});
+		end = System.currentTimeMillis();
+		System.out.println("cost: " + (end - start) + " ms" );
 	}
 	
 	
